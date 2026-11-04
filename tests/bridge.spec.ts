@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -209,17 +209,20 @@ describe('TelegramBridge', () => {
     telegram.push(text(USER, '/cwd relative/path'))
     await until(() => telegram.sent().length === 1)
     expect(store.get(KEY).workspacePath).toBeUndefined()
-    telegram.push(text(USER, `/cwd ${tmpdir()}`))
-    await until(() => store.get(KEY).workspacePath === tmpdir())
+    // A directory of its own. The fake session list already offers /tmp, so /cwd /tmp would collapse the picker into one choice.
+    const cwd = join(dir, 'work')
+    await mkdir(cwd)
+    telegram.push(text(USER, `/cwd ${cwd}`))
+    await until(() => store.get(KEY).workspacePath === cwd)
     // /new offers the chat's directory first (⭐), then where recent Sessions ran.
     telegram.push(text(USER, '/new'))
     await until(() => telegram.calls.some(c => c.method === 'sendMessage' && String(c.params['text']).startsWith('Start the new Session')))
     const picker = telegram.calls.find(c => String(c.params['text']).startsWith('Start the new Session'))!
     const rows = (picker.params['reply_markup'] as { inline_keyboard: { text: string; callback_data: string }[][] }).inline_keyboard
-    expect(rows.map(row => row[0]!.text)).toEqual([`⭐ ${tmpdir()}`, '📁 /tmp'])
+    expect(rows.map(row => row[0]!.text)).toEqual([`⭐ ${cwd}`, '📁 /tmp'])
     telegram.push({ callback_query: { id: 'q', from: USER, data: rows[0]![0]!.callback_data, message: { message_id: 9, chat: CHAT, date: 0 } } })
     await until(() => harness.created.length === 1)
-    expect(harness.created[0]?.cwd).toBe(tmpdir())
+    expect(harness.created[0]?.cwd).toBe(cwd)
   })
 
   it('answers approvals from inline buttons', async () => {

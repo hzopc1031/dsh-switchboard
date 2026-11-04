@@ -8,6 +8,7 @@ import { SettingsSecretField, SettingsValueField, Switch } from '@deepseek-ai/ds
 import { useState, type ReactNode } from 'react'
 import { defaultSecretRef, LINE_ID, type ChannelType } from '../lines.ts'
 import { FeishuScan, type ScanResult } from './FeishuScan.tsx'
+import { lineCardStatus } from './line-status.ts'
 import type { TelegramBridgeLocaleKey } from './locales.ts'
 
 type T = (key: TelegramBridgeLocaleKey) => string
@@ -138,6 +139,7 @@ export function LinesEditor(props: {
             disabled={disabled} onEdit={onEdit} onReset={() => {}} />
         )
         const state = props.states[v.id]
+        const status = lineCardStatus(v.enabled, state)
         const queued = props.queued[v.id] ?? 0
         const people = splitList(row.users).length
         const expanded = open.has(index)
@@ -149,7 +151,9 @@ export function LinesEditor(props: {
               <button type="button" className="tgb-line-title" aria-expanded={expanded} onClick={() => { toggle(index) }}>
                 <span className="tgb-line-name-text">{name}</span>
                 <span className="tgb-line-sub">
-                  {state !== undefined && v.enabled ? <LineStateTag state={state} type={v.type} t={t} /> : <span className="tgb-state" data-kind="stopped">{t('lineOff')}</span>}
+                  {status.kind === 'state'
+                    ? <LineStateTag state={status.state} type={v.type} t={t} />
+                    : <span className="tgb-state" data-kind={status.kind === 'off' ? 'stopped' : 'unknown'}>{t(status.kind === 'off' ? 'lineOff' : 'lineUnknown')}</span>}
                   <span>{t('linePeople').replace('{n}', String(people))}</span>
                   {props.configured[v.id] !== true && (v.type === 'telegram' || v.appId.trim() === '') && <span className="tgb-tag" data-tone="warn">{t('lineUnset')}</span>}
                   {queued > 0 && <span className="tgb-tag" data-tone="warn">{t('lineQueued').replace('{n}', String(queued))}</span>}

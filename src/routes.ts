@@ -9,7 +9,7 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 import { modelLabel, type Switchboard } from './bridge.ts'
 import type { RegistrationDesk } from './channels/feishu-register.ts'
 import { splitChatKey } from './lines.ts'
-import type { ChatLog, ChatSummary } from './chatlog.ts'
+import type { ChatLog, ChatStats, ChatSummary } from './chatlog.ts'
 import type { UpdateChecker } from './updates.ts'
 
 /** Route prefix; the browser half calls these relative to the page. */
@@ -35,6 +35,51 @@ async function body(request: Request): Promise<Record<string, unknown>> {
     return value !== null && typeof value === 'object' ? value as Record<string, unknown> : {}
   } catch {
     return {}
+  }
+}
+
+/** One overview response. `chatsError` is set only when the chat index could not be read. */
+export interface OverviewBody {
+  state: Switchboard['state']
+  lines: ReturnType<Switchboard['lineStates']>
+  chats: ChatSummary[]
+  /** True when the chat index could not be read. Line states are still present. */
+  chatsError?: true
+  stats?: ChatStats
+}
+
+/**
+ * Line states first, then chats and stats. Either history read can fail
+ * (a torn index, a stats file from another version) without dropping the
+ * connection report the settings page is polling for.
+ */
+export async function buildOverview(input: {
+  state: Switchboard['state']
+  lines: ReturnType<Switchboard['lineStates']>
+  readChats: () => Promise<ChatSummary[]>
+  readStats: () => Promise<ChatStats>
+  describe: (chat: ChatSummary) => ChatSummary
+}): Promise<OverviewBody> {
+  let chats: ChatSummary[] = []
+  let chatsError = false
+  try {
+    chats = (await input.readChats()).map(chat => input.describe(chat))
+  } catch {
+    chats = []
+    chatsError = true
+  }
+  let stats: ChatStats | undefined
+  try {
+    stats = await input.readStats()
+  } catch {
+    stats = undefined
+  }
+  return {
+    state: input.state,
+    lines: input.lines,
+    chats,
+    ...(chatsError ? { chatsError: true } : {}),
+    ...(stats === undefined ? {} : { stats }),
   }
 }
 
@@ -66,12 +111,16 @@ export function registerHistoryRoutes(
   }
   ctx.effect(() => fetchRoutes.register({
     path: `${API_PREFIX}/overview`,
-    methods: ['POST'],
+    // GET so a page at dsh-app:// can ask without a body. POST stays for callers that already send one.
+    methods: ['GET', 'POST'],
     requestBody: 'buffered',
-    fetch: async () => {
-      const chats = (await log.chats()).map(chat => describeChat(chat))
-      return json({ state: bridge.state, lines: bridge.lineStates(), chats, stats: await log.stats() })
-    },
+    fetch: async () => json(await buildOverview({
+      state: bridge.state,
+      lines: bridge.lineStates(),
+      readChats: () => log.chats(),
+      readStats: () => log.stats(),
+      describe: describeChat,
+    })),
   }), 'switchboard: overview route')
 
   ctx.effect(() => fetchRoutes.register({
