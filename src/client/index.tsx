@@ -35,6 +35,7 @@ import { SettingsForm, SettingsValueField, Switch } from '@deepseek-ai/dsh-clien
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { en, zh, type TelegramBridgeLocaleKey } from './locales.ts'
 import type { ChatSummary } from '../history-types.ts'
+import { overviewRequest } from './api.ts'
 import { LinesEditor, lineOf, registeredRow, rowOf, rowsValid, type LineRow, type LineState, type LineValue } from './LinesEditor.tsx'
 import { MembersView, type PersonValue } from './MembersView.tsx'
 import panelCss from './panel.css'
@@ -478,7 +479,8 @@ export function createSettings(form: ConfigForm<BridgeValues>, describe: Setting
       if (!withLines) return
       let live = true
       const poll = (): void => {
-        void fetch('api/switchboard/overview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+        const { url, init } = overviewRequest()
+        void fetch(url, init)
           .then(async response => response.ok ? await response.json() as { lines?: { id: string; state: LineState; queued?: number }[] } : undefined)
           .then((value) => {
             if (!live || value?.lines === undefined) return

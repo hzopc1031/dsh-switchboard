@@ -6,6 +6,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import type { ChatAttachment, ChatEntry, ChatPage, ChatStats, ChatSummary } from '../history-types.ts'
+import { overviewRequest } from './api.ts'
 import type { TelegramBridgeLocaleKey } from './locales.ts'
 import { pendingRequests } from './MembersView.tsx'
 import type { UpdateCheck } from './update.ts'
@@ -115,11 +116,18 @@ export function createTelegramPanel(actions: PanelActions) {
 
     usePolling(async () => {
       try {
-        const overview = await post<{ state: BridgeState; lines?: LineStatus[]; chats: ChatSummary[]; stats?: ChatStats }>('overview')
+        const { url, init } = overviewRequest()
+        const response = await fetch(url, init)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const overview = await response.json() as { state: BridgeState; lines?: LineStatus[]; chats?: ChatSummary[]; chatsError?: true; stats?: ChatStats }
         setLines(overview.lines ?? [{ id: 'telegram', type: 'telegram', name: 'Telegram', state: overview.state }])
-        setStats(overview.stats)
-        setChats(overview.chats)
-        setFailed(false)
+        if (overview.stats !== undefined) setStats(overview.stats)
+        // A broken chat index must not wipe line state or pretend there are no chats.
+        if (overview.chatsError === true) setFailed(true)
+        else {
+          setChats(overview.chats ?? [])
+          setFailed(false)
+        }
       } catch {
         setFailed(true)
       }
