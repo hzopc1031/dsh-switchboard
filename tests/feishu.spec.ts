@@ -181,6 +181,56 @@ describe('Feishu line', () => {
     expect(chat).toMatchObject({ chatId: KEY, title: 'Ann', type: 'private' })
   })
 
+  it('resolves an actor when Feishu sends user_id: null', async () => {
+    // No user_id scope: user_id is null, while open_id and union_id are set.
+    settings = {
+      ...settings,
+      lines: [{ ...FEISHU_LINE, allowedUsers: ['on_ann'] }],
+      people: [{ line: 'feishu', id: 'on_ann', role: 'guest' }],
+    }
+    const sender: FeishuMessageEvent['sender'] = {
+      sender_id: { open_id: ANN, user_id: null, union_id: 'on_ann' },
+      sender_type: 'user',
+    }
+    feishu.deliver({
+      sender,
+      message: {
+        message_id: 'om_null_who', chat_id: DM, chat_type: 'p2p', message_type: 'text',
+        content: JSON.stringify({ text: '/whoami' }),
+      },
+    })
+    await until(() => feishu.texts().some(text => text.includes(`User id: ${ANN}`)))
+    feishu.deliver({
+      sender,
+      message: {
+        message_id: 'om_null_mode', chat_id: DM, chat_type: 'p2p', message_type: 'text',
+        content: JSON.stringify({ text: '/mode' }),
+      },
+    })
+    // Admitted by union_id and matched as a guest: null did not throw or drop the real id.
+    await until(() => feishu.texts().some(text => text.includes('admin rights')))
+    expect(harness.prompts).toHaveLength(0)
+  })
+
+  it('resolves a card operator whose user_id is null', async () => {
+    settings = {
+      ...settings,
+      lines: [{ ...FEISHU_LINE, allowedUsers: ['on_ann'] }],
+      people: [{ line: 'feishu', id: 'on_ann', role: 'guest' }],
+    }
+    await store.update(KEY, { sessionId: 's1' })
+    const outcome = bridge.requestApproval({ sessionId: 's1', toolName: 'bash' })
+    await until(() => feishu.sent.length === 1)
+    const [allow] = cardButtons(feishu.sent[0]!.content)
+    const response = await feishu.press({
+      operator: { open_id: ANN, user_id: null, union_id: 'on_ann' },
+      action: { value: { d: allow! } },
+      context: { open_chat_id: DM, open_message_id: feishu.sent[0]!.id },
+    })
+    expect(response?.toast?.content).toContain('cannot answer approvals')
+    void outcome
+  })
+
   it('answers strangers with their open_id and admits them by user_id too', async () => {
     feishu.deliver(message(DM, 'text', { text: 'hello' }, {}, 'ou_eve'))
     await until(() => feishu.sent.length === 1)

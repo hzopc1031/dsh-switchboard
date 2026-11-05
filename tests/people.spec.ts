@@ -19,6 +19,13 @@ describe('people', () => {
     expect(actorFor(people, 'telegram', ['9', '@Eve'], false, '/home')).toEqual({ role: 'guest', preset: 'read-only', dirs: ['/home'] })
   })
 
+  it('ignores null and empty ids', () => {
+    expect(actorFor(people, 'telegram', [null, undefined, '', '   ', '42'], false, '/home')).toEqual({ role: 'member', preset: 'workspace-write', dirs: ['/work/app'] })
+    expect(actorFor(people, 'telegram', [null, '', '@Eve'], false, '/home')).toEqual({ role: 'guest', preset: 'read-only', dirs: ['/home'] })
+    // Null is not the string "null", and blanks never name a person.
+    expect(actorFor([...people, { line: 'telegram', id: 'null', role: 'guest' }], 'telegram', [null, undefined, '', '  '], false, '/home')).toEqual({ role: 'admin' })
+  })
+
   it('keeps members to their directories, without prefix tricks', () => {
     const member = { role: 'member' as const, dirs: ['/work/app'] }
     expect(mayUse(member, '/work/app')).toBe(true)
