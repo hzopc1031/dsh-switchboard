@@ -41,14 +41,14 @@ const ADMIN_COMMANDS = /permission|sandbox|approv|trust|mode|yolo/iu
 
 /**
  * Who someone is on a line.
- * @param ids - their id, aliases, and `@username`, any of which the record may name.
+ * @param ids - their id, aliases, and `@username`, any of which the record may name. Null and blank entries are ignored.
  * @param viaChat - they are admitted only because their chat is allowed, not by name.
  * @param fallbackDir - the working directory a member without directories is kept to.
  */
 export function actorFor(
-  people: readonly PersonSettings[] | undefined, line: string, ids: readonly string[], viaChat: boolean, fallbackDir: string | undefined,
+  people: readonly PersonSettings[] | undefined, line: string, ids: readonly (string | null | undefined)[], viaChat: boolean, fallbackDir: string | undefined,
 ): Actor {
-  const wanted = new Set(ids.map(id => id.trim().toLowerCase()).filter(id => id !== ''))
+  const wanted = new Set(ids.map(id => (id ?? '').trim().toLowerCase()).filter(id => id !== ''))
   const record = people?.find(person => person.line === line && wanted.has(person.id.trim().toLowerCase()))
   const role: Role = record?.role ?? (viaChat ? 'member' : 'admin')
   if (role === 'admin') return ADMIN
